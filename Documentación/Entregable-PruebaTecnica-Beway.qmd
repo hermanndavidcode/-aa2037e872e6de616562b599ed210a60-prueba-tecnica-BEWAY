@@ -1,0 +1,41 @@
+---
+title: "Prueba Técnica - Análisis de Datos" 
+subtitle: "Análisis de datos para Prueba Técnica de BeWay" # Rellenar con los valores apropiados
+month: "Mes"
+year: "Año"
+author: "Nombre del Autor"
+execute: 
+  warning: false
+  error: false 
+format: 
+  html:
+    code-block-bg: true 
+    code-block-border-left: "#00bc8c"
+    self-contained: true
+    code-fold: false 
+toc: true
+toc-depth: 4 
+toc-title: Índice del documento 
+toc-location: right 
+number-sections: false 
+tbl-cap-location: top 
+editor_options: 
+  chunk_output_type: console
+title-block: false
+---
+
+# Sobre este documento
+Este documento sintetiza el código, los resultados y la interpretación de los mismos que ha sido realizado en el contexto de una prueba técnica para ser admitido en el CE de R&D de BeWay como Behavioral Data Scientist.
+
+# Análisis de datos
+
+```{python}
+# Aquí se muestra un ejemplo de cómo se pueden presentar los resultados del análisis de datos utilizando Python.
+
+print("Así se muestra el código utilizado en el caso que utilices Python")
+```
+
+```{r}
+# Aquí se muestra un ejemplo de cómo se pueden presentar los resultados del análisis de datos utilizando R.
+print("Así se muestra el código utilizado en el caso que utilices R")
+```
