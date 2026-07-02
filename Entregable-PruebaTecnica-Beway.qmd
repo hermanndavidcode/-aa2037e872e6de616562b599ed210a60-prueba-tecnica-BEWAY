@@ -1,8 +1,8 @@
 ---
 title: "Prueba Técnica - Análisis de Datos" 
 subtitle: "Análisis de datos para Prueba Técnica de BeWay" # Rellenar con los valores apropiados
-month: "Junio"
-year: "2026"
+month: "Mes"
+year: "Año"
 author: "David Ospina-Nieto"
 execute: 
   warning: false
@@ -23,6 +23,7 @@ editor_options:
   chunk_output_type: console
 title-block: false
 ---
+
 
 ### Contexto
 
@@ -104,19 +105,19 @@ df[catcols] = df[catcols].astype('category')
 print("Valores perdidos por columnas:")
 print(df.isna().sum())
 
-# Check column data types and non-missing values
+# Tipos y valores perdidos
 print("\n Column data types and non-missing values:")
 print(df.info())
 
-# Print the first five rows of the DataFrame
+# Primeras filas del DataFrame
 print("\n First five rows of the DataFrame:")
 print(df.head())
 
-# Print the last five rows of the DataFrame
+# Últimas filas del DataFrame
 print("\n Last five rows of the DataFrame:")
 print(df.tail())
 
-# Print the statistics of all columns
+# Estadísticas para las numéricas
 print("\n Statistics of all columns:")
 print(df.describe())
 ```
@@ -347,7 +348,7 @@ most_effective_group['grupo_edad'] = pd.cut(
 most_effective_group['cuartil_inve'] = pd.qcut(
     most_effective_group['inve'], 
     q=4, 
-    labels=['Q1', 'Q2', 'Q3', 'Q4'] # Usé comillas para claridad en los labels
+    labels=['Q1', 'Q2', 'Q3', 'Q4']
 )
 
 #Transformar el tipo de variable
@@ -465,6 +466,113 @@ for g1, g2 in pares:
     print(f"  ¿Diferencia significativa?: {significativo}\n")
 ```
 
+```{python}
+from patsy import dmatrices
+# 1. Renombrar la columna 'or' a 'open_rate'
+df.rename(columns={'or': 'open_rate'}, inplace=True)
+
+# 2. Asegurar tipos numéricos usando el nuevo nombre
+df['open_rate'] = df['open_rate'].astype(int)
+df['ctor'] = df['ctor'].astype(int)
+df['edad'] = df['edad'].astype(float)
+df['inve'] = df['inve'].astype(float)
+
+# 3. Actualizar la fórmula de colinealidad (VIF)
+formula_indep = "open_rate ~ C(grupo) + edad + inve + C(sexo) + C(uso_app) + C(tarjeta_debito) + C(tipo_tarjeta) + C(formacion)"
+
+# 4. Ejecutar dmatrices
+y_vif, X_vif = dmatrices(formula_indep, df, return_type='dataframe')
+```
+
+## Regresión logística
+
+```{python}
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+from patsy import dmatrices
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+# 1. Renombrar la columna problemática
+df.rename(columns={'or': 'open_rate'}, inplace=True)
+
+# 2. Asegurar tipos de datos numéricos usando el nuevo nombre
+df['open_rate'] = df['open_rate'].astype(int)
+df['ctor'] = df['ctor'].astype(int)
+df['edad'] = df['edad'].astype(float)
+df['inve'] = df['inve'].astype(float)
+
+# ========================================================================
+# 3. VERIFICACIÓN DE SUPUESTOS
+# ========================================================================
+
+# 3.1 Supuesto 1: Ausencia de Multicolinealidad (VIF)
+formula_indep = "open_rate ~ C(grupo) + edad + inve + C(sexo) + C(uso_app) + C(tarjeta_debito) + C(tipo_tarjeta) + C(formacion)"
+y_vif, X_vif = dmatrices(formula_indep, df, return_type='dataframe')
+
+vif_df = pd.DataFrame()
+vif_df["Variable"] = X_vif.columns
+vif_df["VIF"] = [variance_inflation_factor(X_vif.values, i) for i in range(X_vif.shape[1])]
+print("--- Verificación de Multicolinealidad (VIF) ---")
+display(vif_df.round(2))
+
+# 3.2 Supuesto 2: Linealidad de Variables Continuas (Test de Box-Tidwell)
+df_bt = df.copy()
+if (df_bt['inve'] <= 0).any():
+    df_bt['inve'] += 0.01
+
+df_bt['edad_ln'] = df_bt['edad'] * np.log(df_bt['edad'])
+df_bt['inve_ln'] = df_bt['inve'] * np.log(df_bt['inve'])
+
+formula_bt = ("open_rate ~ C(grupo, Treatment(reference='ctrl')) + edad + inve + "
+              "edad_ln + inve_ln + C(sexo) + C(uso_app) + C(tarjeta_debito) + "
+              "C(tipo_tarjeta) + C(formacion)")
+modelo_bt = smf.logit(formula_bt, data=df_bt).fit(disp=0)
+
+print("\n--- Verificación de Linealidad (Test Box-Tidwell) ---")
+print(modelo_bt.pvalues[['edad_ln', 'inve_ln']])
+
+# ========================================================================
+# 4. REGRESIÓN LOGÍSTICA: OPEN RATE
+# ========================================================================
+formula_or = ("open_rate ~ C(grupo, Treatment(reference='ctrl')) + edad + inve + "
+              "C(sexo) + C(uso_app) + C(tarjeta_debito) + C(tipo_tarjeta) + C(formacion)")
+modelo_or = smf.logit(formula_or, data=df).fit(disp=0)
+
+print("\n--- Modelo 1: Open Rate ---")
+print(modelo_or.summary())
+
+odds_or = pd.DataFrame({
+    'Odds_Ratio': np.exp(modelo_or.params),
+    'P-valor': modelo_or.pvalues,
+    'IC_Inferior_2.5%': np.exp(modelo_or.conf_int()[0]),
+    'IC_Superior_97.5%': np.exp(modelo_or.conf_int()[1])
+})
+display(odds_or.round(3))
+
+# ========================================================================
+# 5. REGRESIÓN LOGÍSTICA: CLICK TO OPEN RATE (CTOR)
+# ========================================================================
+# Filtrar sobre los usuarios que abrieron el email usando el nuevo nombre
+df_ctor = df[df['open_rate'] == 1].copy()
+
+formula_ctor = ("ctor ~ C(grupo, Treatment(reference='ctrl')) + edad + inve + "
+                "C(sexo) + C(uso_app) + C(tarjeta_debito) + C(tipo_tarjeta) + C(formacion)")
+modelo_ctor = smf.logit(formula_ctor, data=df_ctor).fit(disp=0)
+
+print("\n--- Modelo 2: Click to Open Rate (CTOR) ---")
+print(modelo_ctor.summary())
+
+odds_ctor = pd.DataFrame({
+    'Odds_Ratio': np.exp(modelo_ctor.params),
+    'P-valor': modelo_ctor.pvalues,
+    'IC_Inferior_2.5%': np.exp(modelo_ctor.conf_int()[0]),
+    'IC_Superior_97.5%': np.exp(modelo_ctor.conf_int()[1])
+})
+display(odds_ctor.round(3))
+```
+
 # Informe de resultados
 
 ## Situación
@@ -486,7 +594,7 @@ Para evaluar alternativas de mejora, se diseño e implementó un experimento con
 
 ## Resultados
 
-### Desempeño global del embudo
+### Desempeño global del embudo Test 1
 
 La prueba X² reveló que **sí existen diferencias significativas** entre las 3 condiciones (control, tratamiento 1 y tratamiento 2) en las métricas del embudo: OR (X² = 458.8, p < 0.05) y CTOR (X² = 660.6, p < 0.05).
 
@@ -500,6 +608,7 @@ Particularmente:
 
 * **Total Click Rate (TCR):** En la conversión final sobre el total de la muestra, el Tratamiento 2 consolidó una tasa del **48.9%**, lo que equivale a **5.62 veces** la tasa del Control y un **uplift del 462.07%**
 
+Los modelos de regresión logística revelaron que sí existen diferencias significativas al incorporar los predictores en las métricas del embudo: Open Rate (LLR p-value = 7.66e-243, Pseudo R² = 0.1707) y CTOR (LLR p-value = 3.33e-222, Pseudo R² = 0.3273).
 
 | Métrica | Grupo Control | Tratamiento 1 (Multiplicador / Uplift) | Tratamiento 2 (Multiplicador / Uplift) |
 | --- | --- | --- | --- |
@@ -522,5 +631,16 @@ El análisis de las covariables identificó variaciones en la respuesta al trata
 1. **Sustitución del control:** reemplazar la plantilla tradicional por la del tratamiento 2 para el despliegue en la base restante de 495,000 clientes.
 2. **Segmentación del envío:** priorizar el uso automatizado del tratamiento 2 en clientes de los cuartiles superiores de inversión (Q3 y Q4) y aquellos entre los 18 y 34 años. debido a sus tasas de respuesta.
 3. **Desarrollar nuevos experimentos:** pobar nuevas intervenciones con los segmentos de menor desempeño y evaluar la efectividad de otros canales.
+
+
+### Desempeño global del embudo Test 2
+
+El análisis de los coeficientes del modelo **reveló diferencias significativas en el open rate entre el grupo control y el tratamiento 1** (z = 12.14, p < 0.05) **y entre el grupo control y el tratamiento 2** (z = 6.03, p < 0.05). En contraste, para el Click-To-Open Rate (CTOR), solo se observaron diferencias significativas entre el grupo control y el tratamiento 1 (z = -2.91, p < 0.05), mientras que el tratamiento 2 no mostró un efecto estadísticamente significativo frente a la línea base (z = -1.50, p = 0.135).
+
+Particularmente:
+
+Open Rate (OR): Tanto el tratamiento 1 como el tratamiento 2 incrementan significativamente la probabilidad de apertura frente al control, siendo el tratamiento 1 el de mayor impacto (coef = 0.9618 frente a 0.5087). A nivel de covariables, el perfil del usuario afecta el indicador: la edad (coef = -0.0274, p < 0.05) y el sexo 1 (coef = -0.2153, p < 0.05) reducen significativamente el OR, mientras que el nivel de inversión muestra un efecto positivo (coef = 6.65e-05, p < 0.05). Las variables de uso de la app y posesión de tarjeta de débito carecen de impacto estadístico.
+
+Click-To-Open Rate (CTOR): Al segmentar la muestra por los usuarios que efectivamente abrieron el correo, el tratamiento 1 disminuye significativamente la probabilidad de hacer clic en comparación con el control (coef = -0.4449), mientras que el tratamiento 2 no genera un cambio estadístico (p = 0.135). La tendencia de las variables continuas se mantiene idéntica al modelo de apertura, registrando efectos significativos negativos para la edad (coef = -0.0275, p < 0.05) y positivos para el nivel de inversión (coef = 0.0001, p < 0.05). El resto de variables de control (sexo, uso de app, tipo de tarjeta y nivel de formación) no resultaron significativas en esta etapa del embudo.
 
 
