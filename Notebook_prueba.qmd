@@ -1,0 +1,526 @@
+---
+title: "Prueba Técnica - Análisis de Datos" 
+subtitle: "Análisis de datos para Prueba Técnica de BeWay" # Rellenar con los valores apropiados
+month: "Junio"
+year: "2026"
+author: "David Ospina-Nieto"
+execute: 
+  warning: false
+  error: false 
+format: 
+  html:
+    code-block-bg: true 
+    code-block-border-left: "#00bc8c"
+    self-contained: true
+    code-fold: false 
+toc: true
+toc-depth: 4 
+toc-title: Índice del documento 
+toc-location: right 
+number-sections: false 
+tbl-cap-location: top 
+editor_options: 
+  chunk_output_type: console
+title-block: false
+---
+
+### Contexto
+
+El equipo de especialistas en ciencias del comportamiento ha colaborado con un cliente bancario para incrementar la proporción de usuarios finales que abren un email comercial y hacen clic en un botón interno que redirige a una página web de venta.
+
+### Diseño experimental
+
+Se evalúa la efectividad de tres variantes de correos electrónicos:
+
+* **Email control:** Versión estándar sin palancas conductuales (*nudges*).
+* **Tratamiento 1:** Correo electrónico codificado con principios de ciencias del comportamiento.
+* **Tratamiento 2:** Segunda variante basada en principios de ciencias del comportamiento.
+
+### Objetivos del análisis
+
+* **Evaluación de impacto:** Medir la eficacia y efectividad de los tratamientos frente al grupo control en las métricas de apertura y clics.
+* **Análisis de covariables:** Evaluar el efecto de las variables adicionales disponibles en la base de datos sobre el comportamiento de los usuarios.
+* **Data storytelling:** Traducir los hallazgos estadísticos en una narrativa clara y comprensible para el cliente.
+
+
+## Importe de librerías
+
+```{python}
+#Importe de librerías para los análisis
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
+from scipy.stats import shapiro
+from statsmodels.stats.diagnostic import lilliefors
+from statsmodels.stats.proportion import proportions_ztest
+import itertools
+```
+
+## Ingesta de datos
+
+```{python}
+#Creación del dataframe
+df = pd.read_csv("/Users/david/BeWay/Centro de Excelencia - Datos/Bases de datos/datos_prueba_tecnica.csv", encoding='latin-1', sep=',')
+```
+
+## Exploratory Data Anlysis (EDA)
+
+### Inspección de los datos
+
+```{python}
+# Tipos y salud de los datos
+print("Column data types and non-missing values:")
+print(df.info())
+
+# Primeras filas del DataFrame
+print("\n First five rows of the DataFrame:")
+print(df.head())
+
+# Últimas filas del DataFrame
+print("\n Last five rows of the DataFrame:")
+print(df.tail())
+
+# Estadísticas de todas las columnas
+print("\n Statistics of all columns:")
+print(df.describe())
+```
+
+### Limpieza y procesamiento de datos
+
+```{python}
+# Convertir id a string
+df['iid'] = df['iid'].astype(str)
+
+# Convertir edad a entero
+df['edad'] = df['edad'].astype(int)
+
+# Convertir cols a categoría
+catcols = ['grupo', 'or', 'ctor', 'sexo', 'uso_app', 'tarjeta_debito', 'tipo_tarjeta', 'formacion']
+df[catcols] = df[catcols].astype('category')
+
+# Reconfirmar na's
+print("Valores perdidos por columnas:")
+print(df.isna().sum())
+
+# Check column data types and non-missing values
+print("\n Column data types and non-missing values:")
+print(df.info())
+
+# Print the first five rows of the DataFrame
+print("\n First five rows of the DataFrame:")
+print(df.head())
+
+# Print the last five rows of the DataFrame
+print("\n Last five rows of the DataFrame:")
+print(df.tail())
+
+# Print the statistics of all columns
+print("\n Statistics of all columns:")
+print(df.describe())
+```
+
+### Exploración por variables
+
+```{python}
+# Reconfirmar usuarios únicos
+print("\n Análisis iid")
+print(f"Número de valores únicos (IDs): {df['iid'].nunique()}")
+```
+
+```{python}
+# Medidas de tendencia central y dispersión para edad e ingresos
+print("\nTendencia central y dispersión para edad e inversión:")
+# Descripción general de las estadísticas
+print("Estadísticas de edad:\n", df['edad'].describe())
+print("\nEstadísticas de inversión:\n", df['inve'].describe())
+
+# Visualización de la distribución de edad e inversión
+# Ajuste del canvas para tres plots
+plt.figure(figsize=(18, 6))
+
+# Edad (R1, C1)
+plt.subplot(1, 3, 1)  # 3 columnas
+sns.histplot(df['edad'], kde=True)
+plt.title('Distribución de edad')
+
+# Inversión histograma (R1, C2)
+plt.subplot(1, 3, 2) # segunda columna
+sns.histplot(df['inve'], kde=True)
+plt.title('Distribución de inversión')
+
+# Inversión boxplot (R1, C3)
+plt.subplot(1, 3, 3) # tercera columna
+sns.boxplot(y=df['inve'])
+plt.title('Boxplot de inversión')
+plt.ylabel('Inversión')
+
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+# Análisis de variables categóricas (grupo, sexo, uso_app, tarjeta_debito, tipo_tarjeta)
+print("\nAnálisis de variables categóricas:")
+for var in ['or', 'ctor', 'sexo', 'uso_app', 'tarjeta_debito','grupo', 'tipo_tarjeta', 'formacion']:
+    plt.figure(figsize=(5, 3))
+    sns.countplot(x=df[var])
+    plt.title(f'Distribución de {var}')
+    plt.show()
+```
+
+### Exploración de covariables
+
+```{python}
+#Definición de covariables
+covariables = ['edad', 'inve', 'sexo', 'uso_app', 'tarjeta_debito', 'formacion']
+
+# Matriz de correlación con Spearman
+matriz_corr = df[covariables].corr(method='spearman')
+
+# Plotting de la matriz
+plt.figure(figsize=(7, 5))
+sns.heatmap(matriz_corr, annot=True, fmt=".1f", cmap="coolwarm", vmin=-1, vmax=1, square=False)
+plt.title("Covariables")
+plt.show()
+```
+
+### Análisis de razones
+#### Definición de funciones de razones
+Definición de funciones para calcular las razones para exploración rápida, precisa y reproducible
+
+```{python}
+#Creación de función para el open rate
+def open_rate(dataframe, column_names):
+    opened = dataframe[dataframe['or'] == 1].groupby(column_names)['iid'].nunique()
+    total_users = dataframe.groupby(column_names)['iid'].nunique()        
+    open_rate = round(opened / total_users * 100, 1)    
+    return open_rate
+
+#Creación de función para el click to open rate
+def ctor_rate(dataframe, column_names):
+    clicked = dataframe[(dataframe['or'] == 1) & (dataframe['ctor'] == 1)].groupby(column_names)['iid'].nunique()    
+    opened = dataframe[dataframe['or'] == 1].groupby(column_names)['iid'].nunique()        
+    ctor_rate = round(clicked / opened * 100, 1)
+    
+    return ctor_rate
+
+def click_rate(dataframe, column_names):
+    clicked = dataframe[(dataframe['or'] == 1) & (dataframe['ctor'] == 1)].groupby(column_names)['iid'].nunique()
+    total_users = dataframe.groupby(column_names)['iid'].nunique()
+    click_rate = round(clicked / total_users * 100, 1)
+
+    return click_rate
+```
+
+#### Cálculo de razones globales
+
+```{python}
+# Cálculo del open rate
+print("\nOpen Rate por Grupo de tratamiento") 
+resultado_open = open_rate(df, ['grupo'])
+open_rate_df = pd.DataFrame(resultado_open)
+open_rate_df = pd.DataFrame(open_rate_df.unstack(level=1))
+print(open_rate_df)
+
+# Cálculo del click to open rate
+print("\nClick to Open Rate por grupo de tratamiento") 
+resultado_ctor = ctor_rate(df, ['grupo'])
+ctor_rate_df = pd.DataFrame(resultado_ctor)
+ctor_rate_df = pd.DataFrame(ctor_rate_df.unstack(level=1))
+print(ctor_rate_df)
+
+# Cálculo del click to open rate / total del universo
+print("\n Total click rate por grupo de tratamiento") 
+resultado_click = click_rate(df, ['grupo'])
+click_rate_df = pd.DataFrame(resultado_click)
+click_rate_df = pd.DataFrame(click_rate_df.unstack(level=1))
+print(click_rate_df)
+```
+
+#### Up-lift y multiplicador
+
+```{python}
+# Tasas base (control)
+or_control = 28.8
+ctor_control = 30.3
+tcr_control = 8.7
+
+# Tasas de tratamientos
+or_trat1 = 60.8
+ctor_trat1 = 58.0
+tcr_trat1 = 35.3
+
+or_trat2 = 60.8
+ctor_trat2 = 80.4
+tcr_trat2 = 48.9
+
+# Cálculos para el tratamiento 1
+
+# Open Rate (OR) - tratamiento 1
+or_trat1_veces = or_trat1 / or_control
+or_trat1_uplift = ((or_trat1 - or_control) / or_control) * 100
+print(f"Open Rate (OR) - tratamiento 1: {or_trat1_veces:.2f} veces, uplift: {or_trat1_uplift:.2f}%")
+
+# Click to open rate (CTOR) -  tratamiento 1
+ctor_trat1_veces = ctor_trat1 / ctor_control
+ctor_trat1_uplift = ((ctor_trat1 - ctor_control) / ctor_control) * 100
+print(f"Click to Open Rate (CTOR) - tratamiento 1: {ctor_trat1_veces:.2f} veces, uplift: {ctor_trat1_uplift:.2f}%")
+
+# Total Click Rate (TCR) - tratamiento 1
+tcr_trat1_veces = tcr_trat1 / tcr_control
+tcr_trat1_uplift = ((tcr_trat1 - tcr_control) / tcr_control) * 100
+print(f"Total Click Rate (TCR) - tratamiento 1: {tcr_trat1_veces:.2f} veces, uplift: {tcr_trat1_uplift:.2f}%\n")
+
+
+# Cálculos para el tratamiento 2
+
+# Open Rate (OR) - tratamiento 2
+or_trat2_veces = or_trat2 / or_control
+or_trat2_uplift = ((or_trat2 - or_control) / or_control) * 100
+print(f"Open Rate (OR) - tratamiento 2: {or_trat2_veces:.2f} veces, uplift: {or_trat2_uplift:.2f}%")
+
+# Click to open rate (CTOR) - tratamiento 2
+ctor_trat2_veces = ctor_trat2 / ctor_control
+ctor_trat2_uplift = ((ctor_trat2 - ctor_control) / ctor_control) * 100
+print(f"Click to Open Rate (CTOR) - tratamiento 2: {ctor_trat2_veces:.2f} veces, uplift: {ctor_trat2_uplift:.2f}%")
+
+# Total Click Rate (TCR) - tratamiento 2
+tcr_trat2_veces = tcr_trat2 / tcr_control
+tcr_trat2_uplift = ((tcr_trat2 - tcr_control) / tcr_control) * 100
+print(f"Total Click Rate (TCR) - tratamiento 2: {tcr_trat2_veces:.2f} veces, uplift: {tcr_trat2_uplift:.2f}%")
+```
+
+#### Cálculo de razones específicas - insights
+
+Subsetting
+
+```{python}
+#Subsetting para el análisis de open rate y click to open rate por grupo de tratamiento más efectivo (trat2).
+most_effective_group = df[df['grupo'] == 'trat2']
+print(most_effective_group.head())
+```
+
+Exploración sobre el subsetting (most_effective_group)
+
+```{python}
+# Exploración del open rate para most_effective_group (trat2) si tiene tarjeta_debito, tipo_tarjeta, y sexo
+print("\nOpen Rate para trat2 con tarjeta_debito, tipo_tarjeta y sexo") 
+resultado_open = open_rate(most_effective_group, ['tarjeta_debito', 'tipo_tarjeta', 'sexo'])
+open_rate_df = pd.DataFrame(resultado_open)
+open_rate_df = pd.DataFrame(open_rate_df.unstack(level=1))
+print(open_rate_df)
+
+# Exploración del click to open rate para most effective_group (trat2) si tiene tarjeta_debito, tipo_tarjeta, y sexo
+print("\nClick to Open Rate para trat2 con tarjeta_debito, tipo_tarjeta y sexo") 
+resultado_ctor = ctor_rate(most_effective_group, ['tarjeta_debito', 'tipo_tarjeta', 'sexo'])
+ctor_rate_df = pd.DataFrame(resultado_ctor)
+ctor_rate_df = pd.DataFrame(ctor_rate_df.unstack(level=1))
+print(ctor_rate_df)
+```
+
+#### Transformar variables numéricas a categóricas
+Esta parte la hago haga para poder hacer el mismo análisis de la razón por edad y por inversión
+
+```{python}
+#Definición de rangos de edad (bins) y etiquetas (labels) para categorizar la edad en grupos
+bins_edad = [18, 25, 35, 50, 65, 71] 
+labels_edad = [
+    '18 - <25',     
+    '25 - <35',   
+    '35 - <50', 
+    '50 - <65',  
+    '≥65'         
+]
+
+# pd.cut() con bins y labels definidos manualmente.
+most_effective_group['grupo_edad'] = pd.cut(
+    most_effective_group['edad'], 
+    bins=bins_edad, 
+    labels=labels_edad, 
+    right=False, # [start, end) - Límite inferior inclusivo, superior exclusivo
+    include_lowest=True
+)
+
+#Inversión en cuartiles
+most_effective_group['cuartil_inve'] = pd.qcut(
+    most_effective_group['inve'], 
+    q=4, 
+    labels=['Q1', 'Q2', 'Q3', 'Q4'] # Usé comillas para claridad en los labels
+)
+
+#Transformar el tipo de variable
+most_effective_group['grupo_edad'] = most_effective_group['grupo_edad'].astype('category')
+most_effective_group['cuartil_inve'] = most_effective_group['cuartil_inve'].astype('category')
+```
+
+```{python}
+# Exploración del open rate para most_effective_group (trat2) si tiene tarjeta_debito y grupo etario
+
+print("\nOpen Rate por grupo de tratamiento 2") 
+resultado_open = open_rate(most_effective_group, ['tarjeta_debito', 'grupo_edad'])
+open_rate_df = pd.DataFrame(resultado_open)
+open_rate_df = pd.DataFrame(open_rate_df.unstack(level=1))
+print(open_rate_df)
+
+# Exploración del click to open rate para most_effective_group (trat2) si tiene tarjeta_debito y grupo etario
+print("\nClick to Open Rate por grupo de tratamiento 2") 
+resultado_ctor = ctor_rate(most_effective_group, ['tarjeta_debito', 'grupo_edad'])
+ctor_rate_df = pd.DataFrame(resultado_ctor)
+ctor_rate_df = pd.DataFrame(ctor_rate_df.unstack(level=1))
+print(ctor_rate_df)
+```
+
+```{python}
+# Exploración del open rate para most_effective_group si tiene tarjeta_debito y inversión
+
+print("\nOpen Rate por grupo de tratamiento 2 por cuartil de inversión") 
+resultado_open = open_rate(most_effective_group, ['cuartil_inve'])
+open_rate_df = pd.DataFrame(resultado_open)
+open_rate_df = pd.DataFrame(open_rate_df.unstack(level=1))
+print(open_rate_df)
+
+# Exploración del click to open rate
+print("\nClick to Open Rate por grupo de tratamiento 2 por cuartil de inversión") 
+resultado_ctor = ctor_rate(most_effective_group, ['cuartil_inve'])
+ctor_rate_df = pd.DataFrame(resultado_ctor)
+ctor_rate_df = pd.DataFrame(ctor_rate_df.unstack(level=1))
+print(ctor_rate_df)
+```
+
+## Análisis inferencial
+
+```{python}
+#Pruebas de normalidad edad
+stat, p_valor = shapiro(df['edad'])
+print("\nPrueba de normalidad edad:")
+print(f"Estadístico W: {stat:.2f}")
+print(f"p-valor: {p_valor:.2g}")
+
+#Pruebas de normalidad inversión
+stat, p_valor = shapiro(df['inve'])
+print("\nPrueba de normalidad inversión:")
+print(f"Estadístico W: {stat:.4f}")
+print(f"p-valor: {p_valor:.4g}")
+```
+
+### Pruebas específicas
+Para todo el DataFrame completo
+
+```{python}
+# Prueba de X2 para el open rate 
+tabla_contingencia = pd.crosstab(df['grupo'], df['or'])
+print("\nTabla de contingencia para OR:")
+print(tabla_contingencia)
+print("\nPrueba de Chi-Cuadrado para el open rate:")
+chi2, p_val, dof, expected = stats.chi2_contingency(tabla_contingencia)
+print(f"Estadístico Chi-cuadrado para OR: {round(chi2, 4)}, p-valor: {round(p_val, 4)}")
+
+# Prueba de Chi-Cuadrado para el click to open rate 
+tabla_contingencia = pd.crosstab(df['grupo'], df['ctor'])
+print("\nTabla de contingencia para CTOR:")
+print(tabla_contingencia)
+print("\nPrueba de Chi-Cuadrado para el click to open rate:")
+chi2, p_val, dof, expected = stats.chi2_contingency(tabla_contingencia)
+print(f"Estadístico Chi-cuadrado para CTOR: {round(chi2, 4)}, p-valor: {round(p_val, 4)}")
+```
+
+##### Post-Hoc
+
+```{python}
+# Tabla de contingencia para el open rate
+contingencia = pd.crosstab(df['grupo'], df['or'])
+grupos = contingencia.index.tolist()
+print("Análisis Post-Hoc para open rate")
+
+
+# Nivel de significancia con corrección de Bonferroni
+alfa_original = 0.05
+
+# Cálculo de las combinaciones posibles de a 2 (trat1 vs ctrl, trat2 vs ctrl, trat1 vs trat2)
+num_comparaciones = len(list(itertools.combinations(grupos, 2))) 
+alfa_bonferroni = alfa_original / num_comparaciones
+
+print(f"Nivel de significancia original: {alfa_original}")
+print(f"Nivel de significancia corregido (Bonferroni): {alfa_bonferroni:.4f}\n")
+
+# 3. Comparaciones por pares
+pares = list(itertools.combinations(grupos, 2))
+
+for g1, g2 in pares:
+    # Extraer los éxitos (or = 1) y el total de observaciones por cada par de grupos
+    exitos = [contingencia.loc[g1, 1], contingencia.loc[g2, 1]]
+    nobs = [contingencia.loc[g1].sum(), contingencia.loc[g2].sum()]
+    
+    # Ejecutar prueba Z de dos proporciones
+    stat, pval = proportions_ztest(exitos, nobs)
+    
+    # Evaluar significancia estadística usando el alfa corregido
+    significativo = "SÍ" if pval < alfa_bonferroni else "NO"
+    
+    print(f"Comparación: {g1} vs {g2}")
+    print(f"  Estadístico Z: {stat:.4f}")
+    print(f"  p-valor: {round(pval,1)}")
+    print(f"  ¿Diferencia significativa?: {significativo}\n")
+```
+
+# Informe de resultados
+
+## Situación
+
+El banco gestiona una base comercial masiva de 500,000 clientes activos en sus plataformas digitales. 
+Al ser una población con perfiles transaccionales y demográficos heterogéneos, no todos los segmentos presentan los mismos niveles de conversión ante las campañas de mercadeo tradicionales.
+
+## Complicación
+
+El correo electrónico registra un desempeño bajo en la interacción con los usuarios. La mayoría de los clientes no abre el correo electrónico (28.8%) y, entre quienes lo abren, la proporción que interactúa con el botón de llamado a la acción es baja (30.3%). 
+Esto se traduce en una tasa de clic final (Total Click Rate sobre todos los usuarios) del 8.7%, lo que limita la activación de los productos financieros y reduce la eficiencia del canal digital.
+
+## Solución
+
+Para evaluar alternativas de mejora, se diseño e implementó un experimento con una aleatoria de 5,000 individuos; y probaron dos variantes de correo electrónico basadas en Ciencias del Comportamiento (nudges) frente al grupo de control.
+
+* **Tratamiento 1 (trat1):** email con nudge 1.
+* **Tratamiento 2 (trat2):** email con nudge 2.
+
+## Resultados
+
+### Desempeño global del embudo
+
+La prueba X² reveló que **sí existen diferencias significativas** entre las 3 condiciones (control, tratamiento 1 y tratamiento 2) en las métricas del embudo: OR (X² = 458.8, p < 0.05) y CTOR (X² = 660.6, p < 0.05).
+
+Un análisis post hoc mediante pruebas Z de proporciones por pares **reveló diferencias significativas en el open rate entre el grupo control y el tratamiento 1** (Z = -18.5, p < 0.0167) **y entre el grupo control y el tratamiento 2** (Z = -18.6, p < 0.0167), utilizando un nivel de significancia ajustado por Bonferroni de 0.0167 para comparaciones múltiples.
+
+Particularmente:
+
+* **Open Rate (OR):** tanto el tratamiento 1 como el tratamiento 2 alcanzaron una tasa de  apertura de **60.8%**, duplicando el 28.8% del control (**2.11 veces más** y un **uplift del 111.11%**).
+
+* **Click-To-Open Rate (CTOR):** una vez abierto el correo, el tratamiento 2 registró una tasa de cliqueo del **80.4%** frente al 58.0% del Tratamiento 1 y el 30.3% del Control(**2.65 veces** más respecto al control y un **uplift del 165.35%**, igualmente).
+
+* **Total Click Rate (TCR):** En la conversión final sobre el total de la muestra, el Tratamiento 2 consolidó una tasa del **48.9%**, lo que equivale a **5.62 veces** la tasa del Control y un **uplift del 462.07%**
+
+
+| Métrica | Grupo Control | Tratamiento 1 (Multiplicador / Uplift) | Tratamiento 2 (Multiplicador / Uplift) |
+| --- | --- | --- | --- |
+| **Open Rate** | 28.8% | 2.11x / +111.11% | **2.11x / +111.11%** |
+| **CTOR** | 30.3% | 1.91x / +91.42% | **2.65x / +165.35%** |
+| **Total Click Rate** | 8.7% | 4.06x / +305.75% | **5.62x / +462.07%** |
+
+### Desempeño para el tratamiento 2
+
+El análisis de las covariables identificó variaciones en la respuesta al tratamiento 2:
+
+* **Cuartil de inversión:** El Open Rate directamente proporcional a los ingresos. Por ejemplo, es del 23.6% en el cuartil inferior (Q1) y se eleva al **99.3%** en el cuartil superior (**Q4**), donde en el CTOR alcanza el **100%**.
+
+* **Grupos etáreos:** Por el contrario, el Open Rate es inversamente proporcional a la edad de los clientes. Los clientes de 18 a <25 años presentan un Open Rate del 95.1% (que sube a **98.7%** con tarjeta de débito) y un CTOR del **100.0%**. Las tasas decrecen con la edad, registrando un Open Rate de entre 15.2% y 26.1% en el segmento >65 años.
+
+* **Sexo producto:** Las mujeres  sin tarjeta de débito y con **Tipo de Tarjeta 3** registran un Open Rate del 81.4% y un CTOR del **91.8%**. Por su parte, los hombres con tarjeta de débito y tarjeta tipo 2 presentan un CTOR del 22.7%.
+
+## Recomendaciones para el negocio
+
+1. **Sustitución del control:** reemplazar la plantilla tradicional por la del tratamiento 2 para el despliegue en la base restante de 495,000 clientes.
+2. **Segmentación del envío:** priorizar el uso automatizado del tratamiento 2 en clientes de los cuartiles superiores de inversión (Q3 y Q4) y aquellos entre los 18 y 34 años. debido a sus tasas de respuesta.
+3. **Desarrollar nuevos experimentos:** pobar nuevas intervenciones con los segmentos de menor desempeño y evaluar la efectividad de otros canales.
+
+
